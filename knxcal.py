@@ -173,7 +173,7 @@ class knxcal:
             if event.summary == self.match:
                 trigger = self.find_trigger(event)
                 if trigger:
-                    logging.info("Triggered %s for %s", trigger["section", event])
+                    logging.info("Triggered %s for %s", trigger["section"], event)
                     self.send_if_new(
                         trigger["ga"], trigger["dtp"], trigger["value"], trigger, event
                     )
