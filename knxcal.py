@@ -58,7 +58,8 @@ class knxcal:
 
     def _fetch_ical(self):
         """ Fetch and parse the iCal URL"""
-        self.events = events(self.calUrl)
+        starttime = (datetime.now(UTC) - timedelta(days=2))
+        self.events = events(self.calUrl, start=starttime)
         logging.debug(self.events)
 
     def send_if_new(self, ga, dpt, value, trigger, event):
