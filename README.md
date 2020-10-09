@@ -70,3 +70,15 @@ This defines the trigger for an event. Can exist multiple times, names must be u
 * address: The KNX group address to notify
 * dpt: The KNX data point type to send
 * value: The KNX value to send
+
+Command line arguments
+----------------------
+
+```
+Options:
+  --debug     Debug output
+  --no-knx    Disable KNX bus access
+  --no-state  Disable state keeping
+  --log FILE  Log to file FILE
+  --help      Show this message and exit.
+  ```
