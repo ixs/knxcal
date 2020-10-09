@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """ iCal to KNX Gateway
 
 This program implements a gateway that fetches an iCal URL, parses for events
