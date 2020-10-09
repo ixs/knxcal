@@ -58,13 +58,13 @@ class knxcal:
 
     def _fetch_ical(self):
         """ Fetch and parse the iCal URL"""
-        starttime = (datetime.now(UTC) - timedelta(days=2))
+        starttime = datetime.now(UTC) - timedelta(days=2)
         self.events = events(self.calUrl, start=starttime)
         logging.debug(self.events)
 
     def send_if_new(self, ga, dpt, value, trigger, event):
-        """ Send data to the bus if we have not done so before.
-            Keep state of notifications for events to prevent repeats."""
+        """Send data to the bus if we have not done so before.
+        Keep state of notifications for events to prevent repeats."""
         if self.statekeeping:
             try:
                 with open(self.statefile, "rb") as f:
@@ -75,15 +75,17 @@ class knxcal:
         else:
             logging.warning("State disabled. Not loading state from file.")
             state = {}
-        key = f"{event.summary}_{event.start}_{event.end}_{ga}_{value}"
+        key = "{}_{}_{}_{}_{}".format(event.summary, event.start, event.end, ga, value)
         if key in state:
             logging.info("Already notified for %s, skipping.", event)
             return
         logging.info("Notifying for %s.", event)
         self.send_to_ga(ga, dpt, value)
-        state.update({key: {"notifytime": datetime.now(), "trigger": trigger, "event": event}})
+        state.update(
+            {key: {"notifytime": datetime.now(), "trigger": trigger, "event": event}}
+        )
         if self.statekeeping:
-            with open(self.statefile, 'wb') as f:
+            with open(self.statefile, "wb") as f:
                 pickle.dump(state, f)
         else:
             logging.warning("State disabled. Not saving state to file.")
@@ -92,7 +94,7 @@ class knxcal:
         """ Expire events that are 24hrs in the past """
         expire = []
         for name, data in state.items():
-            if (data['event'].end - datetime.now(UTC)).total_seconds() / 60 / 60 < -24:
+            if (data["event"].end - datetime.now(UTC)).total_seconds() / 60 / 60 < -24:
                 expire.append(name)
         for name in expire:
             logging.debug("Expiring %s", name)
@@ -102,7 +104,9 @@ class knxcal:
     def send_to_ga(self, ga, dpt, value):
         """ Connect to the KNX bus and set a value. """
         if not self.busaccess:
-            logging.warning("Busaccess disabled, not sending val(%s) to ga(%s)", value, ga)
+            logging.warning(
+                "Busaccess disabled, not sending val(%s) to ga(%s)", value, ga
+            )
             return
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -125,7 +129,9 @@ class knxcal:
             key=lambda x: int(self.config[x].get("offset", 0)),
         ):
             if not section.startswith("trigger"):
-                logging.debug("Skipping %s, not starting with trigger", section)
+                logging.debug(
+                    "Skipping section %s, name not starting with trigger", section
+                )
                 continue
             trigger = self.config[section]
             offset = int(trigger["offset"])
@@ -136,12 +142,21 @@ class knxcal:
                 timediff = event.end - datetime.now(UTC)
             else:
                 raise RuntimeError(
-                    f"""Trigger base needs to be either "begin" or "end", not {base}"""
+                    """Trigger base needs to be either "begin" or "end", not {}""".format(
+                        base
+                    )
                 )
             event_hours_offset = int(timediff.total_seconds() / 60 / 60)
-            logging.debug("Event %s with offset %s and base %s comparing at event_hours_offset %s/%s to event", event.summary, offset, base, event_hours_offset, timediff.total_seconds())
+            logging.debug(
+                "Event %s with offset %s and base %s comparing at event_hours_offset %s/%s to event",
+                event.summary,
+                offset,
+                base,
+                event_hours_offset,
+                timediff.total_seconds(),
+            )
             if event_hours_offset < offset:
-                logging.debug(f"Trigger {trigger}/{offset} matched for {event}")
+                logging.debug("Trigger %s/%s matched for %s", trigger, offset, event)
                 match = section
                 ga = trigger["address"]
                 dtp = trigger["dtp"]
@@ -158,15 +173,21 @@ class knxcal:
             if event.summary == self.match:
                 trigger = self.find_trigger(event)
                 if trigger:
-                    logging.info(f"Triggered {trigger['section']} for {event}")
-                    self.send_if_new(trigger["ga"], trigger["dtp"], trigger["value"], trigger, event)
+                    logging.info("Triggered %s for %s", trigger["section", event])
+                    self.send_if_new(
+                        trigger["ga"], trigger["dtp"], trigger["value"], trigger, event
+                    )
 
 
 @click.command()
-@click.option('--debug', is_flag=True, help='Debug output')
-@click.option('--no-knx', is_flag=True, default=False, help='Disable KNX bus access')
-@click.option('--no-state', is_flag=True, default=False, help='Disable state keeping')
+@click.option("--debug", is_flag=True, help="Debug output")
+@click.option("--no-knx", is_flag=True, default=False, help="Disable KNX bus access")
+@click.option("--no-state", is_flag=True, default=False, help="Disable state keeping")
 def main(debug, no_knx, no_state):
+    """iCal to KNX Gateway
+
+    This program implements a gateway that fetches an iCal URL, parses for events
+    and will send values based on triggers that define an offset to an event."""
     if debug:
         logging.basicConfig(level=logging.DEBUG)
     else:
@@ -176,6 +197,7 @@ def main(debug, no_knx, no_state):
     c.busaccess = not no_knx
     c.statekeeping = not no_state
     c.run()
+
 
 if __name__ == "__main__":
     main()
