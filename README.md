@@ -60,6 +60,7 @@ Section [connection] (optional)
 * gateway_ip: IP of the gateway, required for tunneling, optional otherwise
 * gateway_port: UDP Port listening on the gateway, optional
 * local_ip: The local IP to bind to, optional
+* auto_reconnect: Reconnect automatically when connection lost
 
 Section [trigger*]
 

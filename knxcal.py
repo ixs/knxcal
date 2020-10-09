@@ -129,6 +129,7 @@ class knxcal:
                     "gateway_port", DEFAULT_MCAST_PORT
                 ),
                 local_ip=self.config["connection"].get("local_ip", None),
+                auto_reconnect=self.config["connection"].get("autoReconnect", True),
             )
             logging.debug("Applying custom connection config %s", connection_config)
             xknx.connection_config = connection_config
@@ -204,15 +205,21 @@ class knxcal:
 @click.option("--debug", is_flag=True, help="Debug output")
 @click.option("--no-knx", is_flag=True, default=False, help="Disable KNX bus access")
 @click.option("--no-state", is_flag=True, default=False, help="Disable state keeping")
-def main(debug, no_knx, no_state):
+@click.option("--log", type=click.Path(dir_okay=False), help="Log to file FILE")
+def main(debug, no_knx, no_state, log):
     """iCal to KNX Gateway
 
     This program implements a gateway that fetches an iCal URL, parses for events
     and will send values based on triggers that define an offset to an event."""
     if debug:
-        logging.basicConfig(level=logging.DEBUG)
+        level=logging.DEBUG
     else:
-        logging.basicConfig(level=logging.INFO)
+        level=logging.INFO
+    if log:
+        logfile=log
+    else:
+        logfile=None
+    logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s:%(message)s", level=level, filename=logfile)
     logging.info("KNX Calendar Gateway v%s", __version__)
     c = knxcal()
     c.busaccess = not no_knx
