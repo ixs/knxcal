@@ -4,10 +4,10 @@ iCal to KNX Gateway
 Usage instructions
 ------------------
 
-# checkout code to your local machine
+1. checkout code to your local machine
 git clone https://github.com/ixs/knxcal.git
+2. build a docker image
 cd knxcal
-# build a docker image
 docker build --tag knxcal:latest .
-# run the application as a docker image
+3.  run the application as a docker image
 docker run --rm -it knxcal:latest
