@@ -94,10 +94,10 @@ class knxcal:
             logging.warning("State disabled. Not saving state to file.")
 
     def expire_state(self, state):
-        """ Expire events that are 24hrs in the past """
+        """ Expire events that are 7 days in the past """
         expire = []
         for name, data in state.items():
-            if (data["event"].end - datetime.now(UTC)).total_seconds() / 60 / 60 < -24:
+            if (data["event"].end - datetime.now(UTC)).total_seconds() / 60 / 60 < - (24 * 7):
                 expire.append(name)
         for name in expire:
             logging.debug("Expiring %s", name)
