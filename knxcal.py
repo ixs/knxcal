@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+""" iCal to KNX Gateway
+
+This program implements a gateway that fetches an iCal URL, parses for events
+and will send values based on triggers that define an offset to an event.
+
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <http://www.gnu.org/licenses/>.
+"""
+
+__author__ = "Andreas Thienemann"
+__contact__ = "andreas@thienemann.net"
+__copyright__ = "Copyright 2020, Andreas Thienemann"
+__date__ = "2020/10/09"
+__deprecated__ = False
+__license__ = "GPLv3+"
+__maintainer__ = "developer"
+__status__ = "Development"
+__version__ = "0.0.1"
+
+import asyncio
+import configparser
+from xknx import XKNX
+from xknx.devices import ExposeSensor
+from icalevents.icalevents import events
+import sys
+import logging
+import pickle
+import click
+from datetime import datetime, timedelta
+from dateutil.tz import UTC
+from pprint import pprint
+
+
+class knxcal:
+    def __init__(self):
+        self._load_config()
+        self.busaccess = True
+        self.statekeeping = True
+
+    def _load_config(self, filename="knxcal.ini"):
+        """ Load the knxcal configuration from a file. """
+        self.config = configparser.ConfigParser(interpolation=None)
+        self.config.read(filename)
+        self.calUrl = self.config["knxcal"]["iCalURL"]
+        self.match = self.config["knxcal"]["eventName"]
+        self.statefile = self.config["knxcal"]["stateFile"]
+
+    def _fetch_ical(self):
+        """ Fetch and parse the iCal URL"""
+        self.events = events(self.calUrl)
+        logging.debug(self.events)
+
+    def send_if_new(self, ga, dpt, value, trigger, event):
+        """ Send data to the bus if we have not done so before.
+            Keep state of notifications for events to prevent repeats."""
+        if self.statekeeping:
+            try:
+                with open(self.statefile, "rb") as f:
+                    state = pickle.load(f)
+                    self.expire_state(state)
+            except IOError:
+                state = {}
+        else:
+            logging.warning("State disabled. Not loading state from file.")
+            state = {}
+        key = f"{event.summary}_{event.start}_{event.end}_{ga}_{value}"
+        if key in state:
+            logging.info("Already notified for %s, skipping.", event)
+            return
+        logging.info("Notifying for %s.", event)
+        self.send_to_ga(ga, dpt, value)
+        state.update({key: {"notifytime": datetime.now(), "trigger": trigger, "event": event}})
+        if self.statekeeping:
+            with open(self.statefile, 'wb') as f:
+                pickle.dump(state, f)
+        else:
+            logging.warning("State disabled. Not saving state to file.")
+
+    def expire_state(self, state):
+        """ Expire events that are 24hrs in the past """
+        expire = []
+        for name, data in state.items():
+            if (data['event'].end - datetime.now(UTC)).total_seconds() / 60 / 60 < -24:
+                expire.append(name)
+        for name in expire:
+            logging.debug("Expiring %s", name)
+            del state[name]
+        return state
+
+    def send_to_ga(self, ga, dpt, value):
+        """ Connect to the KNX bus and set a value. """
+        if not self.busaccess:
+            logging.warning("Busaccess disabled, not sending val(%s) to ga(%s)", value, ga)
+            return
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        xknx = XKNX()
+        loop.run_until_complete(xknx.start())
+        expose_sensor = ExposeSensor(
+            xknx, "CalendarSensor", group_address=ga, value_type=dpt
+        )
+        logging.info("Sending val(%s) to ga(%s)", value, ga)
+        loop.run_until_complete(expose_sensor.set(value))
+        logging.debug(expose_sensor)
+        loop.run_until_complete(xknx.stop())
+
+    def find_trigger(self, event):
+        """ Run triggers and see what we need to notify for """
+        ga, dtp, value = (None, None, None)
+        for section in sorted(
+            self.config.sections(),
+            reverse=True,
+            key=lambda x: int(self.config[x].get("offset", 0)),
+        ):
+            if not section.startswith("trigger"):
+                logging.debug("Skipping %s, not starting with trigger", section)
+                continue
+            trigger = self.config[section]
+            offset = int(trigger["offset"])
+            base = trigger["base"]
+            if base == "begin":
+                timediff = event.start - datetime.now(UTC)
+            elif base == "end":
+                timediff = event.end - datetime.now(UTC)
+            else:
+                raise RuntimeError(
+                    f"""Trigger base needs to be either "begin" or "end", not {base}"""
+                )
+            event_hours_offset = int(timediff.total_seconds() / 60 / 60)
+            logging.debug("Event %s with offset %s and base %s comparing at event_hours_offset %s/%s to event", event.summary, offset, base, event_hours_offset, timediff.total_seconds())
+            if event_hours_offset < offset:
+                logging.debug(f"Trigger {trigger}/{offset} matched for {event}")
+                match = section
+                ga = trigger["address"]
+                dtp = trigger["dtp"]
+                value = trigger["value"]
+        if ga:
+            return {"section": match, "ga": ga, "dtp": dtp, "value": value}
+        logging.debug("No trigger matched.")
+        return False
+
+    def run(self):
+        """ Main executor """
+        self._fetch_ical()
+        for event in self.events:
+            if event.summary == self.match:
+                trigger = self.find_trigger(event)
+                if trigger:
+                    logging.info(f"Triggered {trigger['section']} for {event}")
+                    self.send_if_new(trigger["ga"], trigger["dtp"], trigger["value"], trigger, event)
+
+
+@click.command()
+@click.option('--debug', is_flag=True, help='Debug output')
+@click.option('--no-knx', is_flag=True, default=False, help='Disable KNX bus access')
+@click.option('--no-state', is_flag=True, default=False, help='Disable state keeping')
+def main(debug, no_knx, no_state):
+    if debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+    logging.info("KNX Calendar Gateway v%s", __version__)
+    c = knxcal()
+    c.busaccess = not no_knx
+    c.statekeeping = not no_state
+    c.run()
+
+if __name__ == "__main__":
+    main()
