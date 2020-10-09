@@ -1,6 +1,14 @@
 # knxcal
 iCal to KNX Gateway
 
+This was a custom engineering effort to allow sending values onto a KNX bus depending on a Google calendar feed.
+The requirement was to send different values depending on time until an event.
+e.g. 3 days before the event, send a value of 3,
+2 days before the event, send a value of 2,
+1 day before the event, send a value of 1.
+After the event has concluded, send a 0.
+
+
 Docker Usage instructions
 -------------------------
 
@@ -54,6 +62,7 @@ Section [connection] (optional)
 * local_ip: The local IP to bind to, optional
 
 Section [trigger*]
+
 This defines the trigger for an event. Can exist multiple times, names must be unique though. e.g. trigger1, trigger99, triggerabc are all acceptable names, they just need to start with trigger.
 * offset: Hours to event, when to trigger
 * base: begin or end, count the offset from either end or beginning of the event.
