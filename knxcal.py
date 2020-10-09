@@ -32,6 +32,8 @@ import asyncio
 import configparser
 from xknx import XKNX
 from xknx.devices import ExposeSensor
+from xknx.io import ConnectionConfig, ConnectionType
+from xknx.io.const import DEFAULT_MCAST_PORT
 from icalevents.icalevents import events
 import sys
 import logging
@@ -111,6 +113,24 @@ class knxcal:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         xknx = XKNX()
+        if "connection" in self.config:
+            connection_types = {
+                "tunneling": ConnectionType.TUNNELING,
+                "routing": ConnectionType.ROUTING,
+                "auto": ConnectionType.AUTOMATIC,
+            }
+            connection_config = ConnectionConfig(
+                connection_type=connection_types[
+                    self.config["connection"].get("type", "auto")
+                ],
+                gateway_ip=self.config["connection"].get("gateway_ip", None),
+                gateway_port=self.config["connection"].get(
+                    "gateway_port", DEFAULT_MCAST_PORT
+                ),
+                local_ip=self.config["connection"].get("local_ip", None),
+            )
+            logging.debug("Applying custom connection config %s", connection_config)
+            xknx.connection_config = connection_config
         loop.run_until_complete(xknx.start())
         expose_sensor = ExposeSensor(
             xknx, "CalendarSensor", group_address=ga, value_type=dpt
