@@ -199,6 +199,8 @@ class knxcal:
                     self.send_if_new(
                         trigger["ga"], trigger["dtp"], trigger["value"], trigger, event
                     )
+        else:
+            logging.warning("No events found within the next days.")
 
 
 @click.command()
