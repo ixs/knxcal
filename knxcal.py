@@ -86,7 +86,7 @@ class knxcal:
             state = {}
         key = "{}_{}_{}_{}_{}".format(event.summary, event.start, event.end, ga, value)
         if key in state:
-            logging.info("Already notified for %s, skipping.", event)
+            logging.info("Already notified for %s/%s, skipping.", trigger["section"], event)
             return
         logging.info("Notifying for %s.", event)
         self.send_to_ga(ga, dpt, value)
