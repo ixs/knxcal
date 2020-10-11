@@ -27,7 +27,7 @@ __deprecated__ = False
 __license__ = "GPLv3+"
 __maintainer__ = "developer"
 __status__ = "Development"
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 import asyncio
 import configparser
@@ -51,16 +51,16 @@ class knxcal:
         self._load_config()
         self.busaccess = True
         self.statekeeping = True
+        self.cwd = os.path.dirname(__file__)
 
     def _load_config(self, filename="knxcal.ini"):
         """ Load the knxcal configuration from a file. """
-        cwd = os.path.dirname(__file__)
         self.config = configparser.ConfigParser(interpolation=None)
-        self.config.read(os.path.join(cwd, filename))
+        self.config.read(os.path.join(self.cwd, filename))
         try:
             self.calUrl = self.config["knxcal"]["iCalURL"]
             self.match = self.config["knxcal"]["eventName"]
-            self.statefile = self.config["knxcal"]["stateFile"]
+            self.statefile = os.path.join(self.cwd, self.config["knxcal"]["stateFile"])
         except (KeyError, AttributeError):
             logging.error("Error reading config.")
             sys.exit(225)
