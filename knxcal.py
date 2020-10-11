@@ -27,7 +27,7 @@ __deprecated__ = False
 __license__ = "GPLv3+"
 __maintainer__ = "developer"
 __status__ = "Development"
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 import asyncio
 import configparser
@@ -48,10 +48,10 @@ from pprint import pprint
 
 class knxcal:
     def __init__(self):
+        self.cwd = os.path.dirname(__file__)
         self._load_config()
         self.busaccess = True
         self.statekeeping = True
-        self.cwd = os.path.dirname(__file__)
 
     def _load_config(self, filename="knxcal.ini"):
         """ Load the knxcal configuration from a file. """
@@ -62,7 +62,7 @@ class knxcal:
             self.match = self.config["knxcal"]["eventName"]
             self.statefile = os.path.join(self.cwd, self.config["knxcal"]["stateFile"])
         except (KeyError, AttributeError):
-            logging.error("Error reading config.")
+            logging.critical("Error reading config.")
             sys.exit(225)
 
     def _fetch_ical(self):
@@ -226,18 +226,28 @@ def main(debug, no_knx, no_state, log):
     else:
         level = logging.INFO
     if log:
+        format = "%(asctime)s %(levelname)s:%(name)s:%(message)s"
         logfile = log
+        handlers = (
+            [
+                logging.handlers.RotatingFileHandler(
+                    logfile, maxBytes=1000000, backupCount=4
+                )
+            ],
+        )
     else:
+        format = "%(levelname)s:%(name)s:%(message)s"
+        handlers = [logging.StreamHandler()]
         logfile = None
 
     logging.basicConfig(
-        format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+        format=format,
         level=level,
         filename=logfile,
     )
 
     def exception_hook(exc_type, exc_value, exc_traceback):
-        logging.error(
+        logging.critical(
             "Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback)
         )
 
