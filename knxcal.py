@@ -176,21 +176,24 @@ class knxcal:
                         base
                     )
                 )
-            event_hours_offset = int(timediff.total_seconds() / 60 / 60)
             logging.debug(
-                "Event %s with offset %s and base %s comparing at event_hours_offset %s/%s to event",
+                "Event %s with configured offset %sh and base %s comparing at event_hours_offset %sh/%ss to event",
                 event.summary,
                 offset,
                 base,
-                event_hours_offset,
-                timediff.total_seconds(),
+                int(timediff.total_seconds() / 60 / 60),
+                int(timediff.total_seconds()),
             )
-            if event_hours_offset <= offset:
+            if int(timediff.total_seconds()) < (offset * 60 * 60):
                 logging.debug("Trigger %s/%s matched for %s", trigger, offset, event)
                 match = section
                 ga = trigger["address"]
                 dtp = trigger["dtp"]
                 value = trigger["value"]
+            else:
+                logging.debug(
+                    "Trigger %s/%s not matched for %s", trigger, offset, event
+                )
         if ga:
             return {"section": match, "ga": ga, "dtp": dtp, "value": value}
         logging.debug("No trigger matched.")
