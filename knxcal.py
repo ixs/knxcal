@@ -27,7 +27,7 @@ __deprecated__ = False
 __license__ = "GPLv3+"
 __maintainer__ = "developer"
 __status__ = "Development"
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 import asyncio
 import configparser
@@ -202,7 +202,6 @@ class knxcal:
         if len(self.events) == 0:
             logging.warning("No events found within the next days.")
         for event in self.events:
-            logging.info(event)
             if event.summary == self.match:
                 trigger = self.find_trigger(event)
                 if trigger:
