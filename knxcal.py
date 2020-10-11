@@ -27,7 +27,7 @@ __deprecated__ = False
 __license__ = "GPLv3+"
 __maintainer__ = "developer"
 __status__ = "Development"
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 import asyncio
 import configparser
@@ -36,6 +36,7 @@ from xknx.devices import ExposeSensor
 from xknx.io import ConnectionConfig, ConnectionType
 from xknx.io.const import DEFAULT_MCAST_PORT
 from icalevents.icalevents import events
+import os
 import sys
 import logging
 import pickle
@@ -53,11 +54,16 @@ class knxcal:
 
     def _load_config(self, filename="knxcal.ini"):
         """ Load the knxcal configuration from a file. """
+        cwd = os.path.dirname(__file__)
         self.config = configparser.ConfigParser(interpolation=None)
-        self.config.read(filename)
-        self.calUrl = self.config["knxcal"]["iCalURL"]
-        self.match = self.config["knxcal"]["eventName"]
-        self.statefile = self.config["knxcal"]["stateFile"]
+        self.config.read(os.path.join(cwd, filename))
+        try:
+            self.calUrl = self.config["knxcal"]["iCalURL"]
+            self.match = self.config["knxcal"]["eventName"]
+            self.statefile = self.config["knxcal"]["stateFile"]
+        except (KeyError, AttributeError):
+            logging.error("Error reading config.")
+            sys.exit(225)
 
     def _fetch_ical(self):
         """ Fetch and parse the iCal URL"""
@@ -97,7 +103,9 @@ class knxcal:
         """ Expire events that are 7 days in the past """
         expire = []
         for name, data in state.items():
-            if (data["event"].end - datetime.now(UTC)).total_seconds() / 60 / 60 < - (24 * 7):
+            if (data["event"].end - datetime.now(UTC)).total_seconds() / 60 / 60 < -(
+                24 * 7
+            ):
                 expire.append(name)
         for name in expire:
             logging.debug("Expiring %s", name)
@@ -191,16 +199,17 @@ class knxcal:
     def run(self):
         """ Main executor """
         self._fetch_ical()
+        if len(self.events) == 0:
+            logging.warning("No events found within the next days.")
         for event in self.events:
+            logging.info(event)
             if event.summary == self.match:
                 trigger = self.find_trigger(event)
                 if trigger:
-                    logging.info("Triggered %s for %s", trigger["section"], event)
+                    logging.debug("Triggered %s for %s", trigger["section"], event)
                     self.send_if_new(
                         trigger["ga"], trigger["dtp"], trigger["value"], trigger, event
                     )
-        else:
-            logging.warning("No events found within the next days.")
 
 
 @click.command()
@@ -214,14 +223,27 @@ def main(debug, no_knx, no_state, log):
     This program implements a gateway that fetches an iCal URL, parses for events
     and will send values based on triggers that define an offset to an event."""
     if debug:
-        level=logging.DEBUG
+        level = logging.DEBUG
     else:
-        level=logging.INFO
+        level = logging.INFO
     if log:
-        logfile=log
+        logfile = log
     else:
-        logfile=None
-    logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s:%(message)s", level=level, filename=logfile)
+        logfile = None
+
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+        level=level,
+        filename=logfile,
+    )
+
+    def exception_hook(exc_type, exc_value, exc_traceback):
+        logging.error(
+            "Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback)
+        )
+
+    sys.excepthook = exception_hook
+
     logging.info("KNX Calendar Gateway v%s", __version__)
     c = knxcal()
     c.busaccess = not no_knx
