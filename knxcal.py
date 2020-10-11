@@ -26,7 +26,7 @@ __date__ = "2020/10/09"
 __deprecated__ = False
 __license__ = "GPLv3+"
 __maintainer__ = "developer"
-__status__ = "Development"
+__status__ = "Production"
 __version__ = "0.5.0"
 
 import asyncio
@@ -185,7 +185,7 @@ class knxcal:
                 event_hours_offset,
                 timediff.total_seconds(),
             )
-            if event_hours_offset < offset:
+            if event_hours_offset <= offset:
                 logging.debug("Trigger %s/%s matched for %s", trigger, offset, event)
                 match = section
                 ga = trigger["address"]
