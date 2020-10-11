@@ -27,7 +27,7 @@ __deprecated__ = False
 __license__ = "GPLv3+"
 __maintainer__ = "developer"
 __status__ = "Production"
-__version__ = "0.5.0"
+__version__ = "1.0.0"
 
 import asyncio
 import configparser
