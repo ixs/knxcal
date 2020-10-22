@@ -114,8 +114,8 @@ class knxcal:
         logging.info("Sending heartbeat")
         self.send_to_ga(
             self.config["heartbeat"]["address"],
-            self.config["heartbeat"]["dtp"],
-            self.config["heartbeat"]["value"],
+            self.config["heartbeat"]["dpt"],
+            bool(self.config["heartbeat"]["value"]),
         )
 
     def _read_state(self):
@@ -219,7 +219,7 @@ class knxcal:
 
     def find_trigger(self, event):
         """ Run triggers and see what we need to notify for """
-        ga, dtp, value = (None, None, None)
+        ga, dpt, value = (None, None, None)
         for section in sorted(
             self.config.sections(),
             reverse=True,
@@ -255,14 +255,14 @@ class knxcal:
                 logging.debug("Trigger %s/%s matched for %s", trigger, offset, event)
                 match = section
                 ga = trigger["address"]
-                dtp = trigger["dtp"]
+                dpt = trigger["dpt"]
                 value = trigger["value"]
             else:
                 logging.debug(
                     "Trigger %s/%s not matched for %s", trigger, offset, event
                 )
         if ga:
-            return {"section": match, "ga": ga, "dtp": dtp, "value": value}
+            return {"section": match, "ga": ga, "dpt": dpt, "value": value}
         logging.debug("No trigger matched.")
         return False
 
@@ -278,7 +278,7 @@ class knxcal:
                 if trigger:
                     logging.debug("Triggered %s for %s", trigger["section"], event)
                     self.send_if_new(
-                        trigger["ga"], trigger["dtp"], trigger["value"], trigger, event
+                        trigger["ga"], trigger["dpt"], trigger["value"], trigger, event
                     )
 
 
@@ -323,7 +323,7 @@ def main(debug, no_knx, no_state, log):
         handlers = [logging.StreamHandler()]
         logfile = None
 
-    logging.basicConfig(format=format, level=level, handlers=handlers)
+    logging.basicConfig(format=format, level=level, filename=logfile)
 
     def exception_hook(exc_type, exc_value, exc_traceback):
         logging.critical(
