@@ -22,12 +22,12 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 __author__ = "Andreas Thienemann"
 __contact__ = "andreas@thienemann.net"
 __copyright__ = "Copyright 2020, Andreas Thienemann"
-__date__ = "2020/10/09"
+__date__ = "2020/10/20"
 __deprecated__ = False
 __license__ = "GPLv3+"
 __maintainer__ = "developer"
 __status__ = "Production"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 import asyncio
 import configparser
@@ -66,43 +66,110 @@ class knxcal:
             sys.exit(225)
 
     def _fetch_ical(self):
-        """ Fetch and parse the iCal URL"""
+        """Fetch and parse the iCal URL"""
         starttime = datetime.now(UTC) - timedelta(days=2)
         self.events = events(self.calUrl, start=starttime)
         logging.debug(self.events)
 
-    def send_if_new(self, ga, dpt, value, trigger, event):
-        """Send data to the bus if we have not done so before.
-        Keep state of notifications for events to prevent repeats."""
+    def _heartbeat_if_needed(self):
+        """Send a regular heartbeat to the bus if needed"""
+        if "heartbeat" not in self.config.sections():
+            logging.debug("No heartbeat configuration, nothing to do")
+            return
+        state = self._read_state()
+        if "heartbeat" not in state:
+            self._send_heartbeat()
+            state.update(
+                {
+                    "heartbeat": {
+                        "notifytime": datetime.now(),
+                    }
+                }
+            )
+            self._write_state(state)
+        if state["heartbeat"]:
+            timediff = datetime.now() - state["heartbeat"]["notifytime"]
+            logging.debug("Last Heartbeat was %dm ago.", timediff.total_seconds() / 60)
+            if (
+                timediff.total_seconds()
+                > int(self.config["heartbeat"]["frequency"]) * 60
+            ):
+                self._send_heartbeat()
+                state.update(
+                    {
+                        "heartbeat": {
+                            "notifytime": datetime.now(),
+                        }
+                    }
+                )
+                self._write_state(state)
+            else:
+                logging.debug("Heartbeat frequency not reached, not sending.")
+
+    def _send_heartbeat(self):
+        """Send a heartbeat to the bus"""
+        if "heartbeat" not in self.config.sections():
+            logging.debug("No heartbeat configuration, nothing to do")
+            return
+        logging.info("Sending heartbeat")
+        self.send_to_ga(
+            self.config["heartbeat"]["address"],
+            self.config["heartbeat"]["dtp"],
+            self.config["heartbeat"]["value"],
+        )
+
+    def _read_state(self):
+        """Get state from file"""
         if self.statekeeping:
             try:
                 with open(self.statefile, "rb") as f:
-                    state = pickle.load(f)
-                    self.expire_state(state)
+                    try:
+                        state = pickle.load(f)
+                        self.expire_state(state)
+                    except EOFError:
+                        logging.debug(
+                            "Error reading pickle file. Assuming empty state."
+                        )
+                        state = {}
             except IOError:
                 state = {}
         else:
             logging.warning("State disabled. Not loading state from file.")
             state = {}
+        return state
+
+    def _write_state(self, state):
+        """Write state to file"""
+        if self.statekeeping:
+            with open(self.statefile, "wb") as f:
+                pickle.dump(state, f)
+        else:
+            logging.warning("State disabled. Not saving state to file.")
+        return
+
+    def send_if_new(self, ga, dpt, value, trigger, event):
+        """Send data to the bus if we have not done so before.
+        Keep state of notifications for events to prevent repeats."""
+        state = self._read_state()
         key = "{}_{}_{}_{}_{}".format(event.summary, event.start, event.end, ga, value)
         if key in state:
-            logging.info("Already notified for %s/%s, skipping.", trigger["section"], event)
+            logging.info(
+                "Already notified for %s/%s, skipping.", trigger["section"], event
+            )
             return
         logging.info("Notifying for %s.", event)
         self.send_to_ga(ga, dpt, value)
         state.update(
             {key: {"notifytime": datetime.now(), "trigger": trigger, "event": event}}
         )
-        if self.statekeeping:
-            with open(self.statefile, "wb") as f:
-                pickle.dump(state, f)
-        else:
-            logging.warning("State disabled. Not saving state to file.")
+        self._write_state(state)
 
     def expire_state(self, state):
         """ Expire events that are 7 days in the past """
         expire = []
         for name, data in state.items():
+            if "event" not in data:
+                continue
             if (data["event"].end - datetime.now(UTC)).total_seconds() / 60 / 60 < -(
                 24 * 7
             ):
@@ -201,6 +268,7 @@ class knxcal:
 
     def run(self):
         """ Main executor """
+        self._heartbeat_if_needed()
         self._fetch_ical()
         if len(self.events) == 0:
             logging.warning("No events found within the next days.")
@@ -215,9 +283,21 @@ class knxcal:
 
 
 @click.command()
-@click.option("--debug", is_flag=True, help="Debug output")
-@click.option("--no-knx", is_flag=True, default=False, help="Disable KNX bus access")
-@click.option("--no-state", is_flag=True, default=False, help="Disable state keeping")
+@click.option("--debug", is_flag=True, help="Debug output", envvar="DEBUG")
+@click.option(
+    "--no-knx",
+    is_flag=True,
+    default=False,
+    help="Disable KNX bus access",
+    envvar="NOKNX",
+)
+@click.option(
+    "--no-state",
+    is_flag=True,
+    default=False,
+    help="Disable state keeping",
+    envvar="NOSTATE",
+)
 @click.option("--log", type=click.Path(dir_okay=False), help="Log to file FILE")
 def main(debug, no_knx, no_state, log):
     """iCal to KNX Gateway
@@ -243,11 +323,7 @@ def main(debug, no_knx, no_state, log):
         handlers = [logging.StreamHandler()]
         logfile = None
 
-    logging.basicConfig(
-        format=format,
-        level=level,
-        filename=logfile,
-    )
+    logging.basicConfig(format=format, level=level, handlers=handlers)
 
     def exception_hook(exc_type, exc_value, exc_traceback):
         logging.critical(
@@ -264,4 +340,6 @@ def main(debug, no_knx, no_state, log):
 
 
 if __name__ == "__main__":
+    # Pylint does not understand the click decorator
+    # pylint: disable=no-value-for-parameter
     main()
