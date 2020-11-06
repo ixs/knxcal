@@ -1,3 +1,0 @@
-2020-10-11 17:28:42,072 INFO:root:KNX Calendar Gateway v1.0.0
-2020-10-11 17:28:42,939 INFO:root:Already notified for 2020-10-11 15:30:00+00:00: Test (now), skipping.
-2020-10-11 17:28:42,946 INFO:root:Already notified for 2020-10-10 21:00:00+00:00: Test (ended), skipping.

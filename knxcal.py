@@ -22,12 +22,12 @@ this program. If not, see <http://www.gnu.org/licenses/>.
 __author__ = "Andreas Thienemann"
 __contact__ = "andreas@thienemann.net"
 __copyright__ = "Copyright 2020, Andreas Thienemann"
-__date__ = "2020/10/20"
+__date__ = "2020/11/06"
 __deprecated__ = False
 __license__ = "GPLv3+"
 __maintainer__ = "developer"
 __status__ = "Production"
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import asyncio
 import configparser
@@ -37,8 +37,10 @@ from xknx.io import ConnectionConfig, ConnectionType
 from xknx.io.const import DEFAULT_MCAST_PORT
 from icalevents.icalevents import events
 import os
+import re
 import sys
 import logging
+import logging_color
 import pickle
 import click
 from datetime import datetime, timedelta
@@ -59,7 +61,7 @@ class knxcal:
         self.config.read(os.path.join(self.cwd, filename))
         try:
             self.calUrl = self.config["knxcal"]["iCalURL"]
-            self.match = self.config["knxcal"]["eventName"]
+            self.match = re.compile(self.config["knxcal"]["eventName"])
             self.statefile = os.path.join(self.cwd, self.config["knxcal"]["stateFile"])
         except (KeyError, AttributeError):
             logging.critical("Error reading config.")
@@ -150,19 +152,29 @@ class knxcal:
     def send_if_new(self, ga, dpt, value, trigger, event):
         """Send data to the bus if we have not done so before.
         Keep state of notifications for events to prevent repeats."""
-        state = self._read_state()
         key = "{}_{}_{}_{}_{}".format(event.summary, event.start, event.end, ga, value)
-        if key in state:
+        if not self._is_new(trigger, event):
             logging.info(
                 "Already notified for %s/%s, skipping.", trigger["section"], event
             )
             return
+        state = self._read_state()
         logging.info("Notifying for %s.", event)
         self.send_to_ga(ga, dpt, value)
         state.update(
             {key: {"notifytime": datetime.now(), "trigger": trigger, "event": event}}
         )
         self._write_state(state)
+
+    def _is_new(self, trigger, event):
+        """Lookup if an event is new or has already been handled"""
+        state = self._read_state()
+        key = "{}_{}_{}_{}_{}".format(
+            event.summary, event.start, event.end, trigger["ga"], trigger["value"]
+        )
+        if key in state:
+            return False
+        return True
 
     def expire_state(self, state):
         """ Expire events that are 7 days in the past """
@@ -272,14 +284,23 @@ class knxcal:
         self._fetch_ical()
         if len(self.events) == 0:
             logging.warning("No events found within the next days.")
-        for event in self.events:
-            if event.summary == self.match:
+        for event in sorted(self.events):
+            if self.match.match(event.summary):
                 trigger = self.find_trigger(event)
                 if trigger:
                     logging.debug("Triggered %s for %s", trigger["section"], event)
-                    self.send_if_new(
-                        trigger["ga"], trigger["dpt"], trigger["value"], trigger, event
-                    )
+                    if self._is_new(trigger, event):
+                        self.send_if_new(
+                            trigger["ga"],
+                            trigger["dpt"],
+                            trigger["value"],
+                            trigger,
+                            event,
+                        )
+                        logging.warning("Trigger called, skipping any further events.")
+                        break
+                    else:
+                        logging.info("Nothing to do for {}".format(event))
 
 
 @click.command()
@@ -323,6 +344,7 @@ def main(debug, no_knx, no_state, log):
         handlers = [logging.StreamHandler()]
         logfile = None
 
+    logging_color.monkey_patch()
     logging.basicConfig(format=format, level=level, filename=logfile)
 
     def exception_hook(exc_type, exc_value, exc_traceback):
